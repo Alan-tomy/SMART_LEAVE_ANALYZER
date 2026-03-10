@@ -1,0 +1,55 @@
+{% extends 'base.html' %}
+{% block title %}My Leaves{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>My Leave History</h1>
+  <a href="{{ url_for('apply_leave') }}" class="btn btn-primary"><i class="fas fa-plus"></i> Apply Leave</a>
+</div>
+
+<!-- Balance Cards -->
+<div class="balance-grid" style="margin-bottom:1.5rem;">
+  {% for b in balances %}
+  <div class="balance-card">
+    <div class="balance-header">
+      <span class="balance-name">{{ b.leave_name }}</span>
+      <span class="balance-type-badge">{{ 'Paid' if b.is_paid else 'Unpaid' }}</span>
+    </div>
+    <div class="balance-bar-wrap">
+      <div class="balance-bar" style="width:{{ [((b.used / b.allocated) * 100)|int, 100]|min }}%;background:{% if b.remaining <= 2 %}var(--danger){% elif b.remaining <= 5 %}var(--warning){% else %}var(--primary){% endif %}"></div>
+    </div>
+    <div class="balance-numbers">
+      <span><strong>{{ b.used }}</strong> used</span>
+      <span><strong style="color:{% if b.remaining <= 2 %}var(--danger){% elif b.remaining <= 5 %}var(--warning){% else %}var(--success){% endif %}">{{ b.remaining }}</strong> left / {{ b.allocated }}</span>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<div class="card">
+  <div class="card-header"><h3><i class="fas fa-list-alt"></i> All Applications</h3></div>
+  <div class="card-body">
+    <div class="table-wrapper">
+      <table class="data-table">
+        <thead>
+          <tr><th>Type</th><th>From</th><th>To</th><th>Days</th><th>Reason</th><th>Applied</th><th>Status</th></tr>
+        </thead>
+        <tbody>
+          {% for app in applications %}
+          <tr>
+            <td>{{ app['leave_name'] }}</td>
+            <td>{{ app['start_date']|fmtdate }}</td>
+            <td>{{ app['end_date']|fmtdate }}</td>
+            <td><span class="badge">{{ app['total_days'] }}d</span></td>
+            <td class="reason-cell">{{ app['reason'] }}</td>
+            <td>{{ app['applied_date']|fmtdate }}</td>
+            <td><span class="status-badge status-{{ app['current_status'].lower() }}">{{ app['current_status'] }}</span></td>
+          </tr>
+          {% else %}
+          <tr><td colspan="7" class="empty-state"><i class="fas fa-inbox"></i><br>No leave applications yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

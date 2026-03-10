@@ -1,0 +1,157 @@
+{% extends 'base.html' %}
+{% block title %}Admin Dashboard{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Admin Dashboard</h1>
+  <p>Welcome back, <strong>{{ user['full_name'] }}</strong>! Here's the system overview.</p>
+</div>
+
+<div class="stats-grid">
+  <div class="stat-card stat-blue">
+    <div class="stat-icon"><i class="fas fa-users"></i></div>
+    <div class="stat-info"><h3>{{ total_employees }}</h3><p>Employees</p></div>
+  </div>
+  <div class="stat-card stat-purple">
+    <div class="stat-icon"><i class="fas fa-graduation-cap"></i></div>
+    <div class="stat-info"><h3>{{ total_students }}</h3><p>Students</p></div>
+  </div>
+  <div class="stat-card stat-orange">
+    <div class="stat-icon"><i class="fas fa-clock"></i></div>
+    <div class="stat-info"><h3>{{ pending }}</h3><p>Pending Requests</p></div>
+  </div>
+  <div class="stat-card stat-green">
+    <div class="stat-icon"><i class="fas fa-check-circle"></i></div>
+    <div class="stat-info"><h3>{{ approved_today }}</h3><p>Approved Today</p></div>
+  </div>
+</div>
+
+{% if user_alerts %}
+<div class="card" style="border-left:4px solid var(--warning);">
+  <div class="card-header">
+    <h3><i class="fas fa-exclamation-triangle" style="color:var(--warning)"></i> Pattern Alerts</h3>
+    <a href="{{ url_for('analysis') }}" class="btn btn-sm btn-outline">View All Analysis</a>
+  </div>
+  <div class="card-body">
+    <div class="table-wrapper">
+      <table class="data-table">
+        <thead><tr><th>User</th><th>Role</th><th>Top Pattern</th><th>Patterns Found</th><th>Action</th></tr></thead>
+        <tbody>
+          {% for a in user_alerts %}
+          <tr>
+            <td><strong>{{ a.name }}</strong><br><small>{{ a.code }}</small></td>
+            <td><span class="badge badge-role">{{ a.role }}</span></td>
+            <td>{{ a.top }}</td>
+            <td><span class="badge">{{ a.count }}</span></td>
+            <td><button class="btn btn-sm btn-primary" onclick="analyzeUser({{ a.uid }}, '{{ a.name }}')">Analyze</button></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<div class="dashboard-grid">
+  <div class="card chart-card">
+    <div class="card-header"><h3><i class="fas fa-chart-bar"></i> Monthly Leave Trend</h3></div>
+    <div class="card-body"><canvas id="monthlyChart" height="200"></canvas></div>
+  </div>
+  <div class="card chart-card">
+    <div class="card-header"><h3><i class="fas fa-chart-pie"></i> Leave by Type</h3></div>
+    <div class="card-body"><canvas id="typeChart" height="200"></canvas></div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <h3><i class="fas fa-history"></i> Recent Leave Applications</h3>
+    <a href="{{ url_for('manage_leaves') }}" class="btn btn-sm btn-outline">View All</a>
+  </div>
+  <div class="card-body">
+    <div class="table-wrapper">
+      <table class="data-table">
+        <thead>
+          <tr><th>Applicant</th><th>Role</th><th>Type</th><th>From</th><th>To</th><th>Days</th><th>Status</th><th>Action</th></tr>
+        </thead>
+        <tbody>
+          {% for app in recent %}
+          <tr>
+            <td><strong>{{ app.full_name }}</strong><br><small>{{ app.user_code }}</small></td>
+            <td><span class="badge badge-role">{{ app.role_name }}</span></td>
+            <td>{{ app.leave_name }}</td>
+            <td>{{ app['start_date']|fmtdate }}</td>
+            <td>{{ app['end_date']|fmtdate }}</td>
+            <td><span class="badge">{{ app['total_days'] }}d</span></td>
+            <td><span class="status-badge status-{{ app['current_status'].lower() }}">{{ app['current_status'] }}</span></td>
+            <td>{% if app['current_status'] == 'Pending' %}
+              <a href="{{ url_for('manage_leaves') }}" class="btn btn-sm btn-primary">Review</a>
+            {% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Analysis Modal -->
+<div class="modal-overlay" id="analysisModal" style="display:none;">
+  <div class="modal" style="max-width:680px;">
+    <div class="modal-header">
+      <h3><i class="fas fa-chart-line"></i> Pattern Analysis: <span id="modalUserName"></span></h3>
+      <button class="modal-close" onclick="closeModal()">×</button>
+    </div>
+    <div class="modal-body" id="modalBody">
+      <div class="loading-state"><div class="spinner"></div><p>Analyzing patterns...</p></div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+fetch('/api/leave-stats').then(r=>r.json()).then(data=>{
+  const months = Object.keys(data.monthly);
+  const vals = Object.values(data.monthly);
+  new Chart(document.getElementById('monthlyChart'), {
+    type: 'bar',
+    data: { labels: months, datasets: [{ label: 'Leave Days', data: vals,
+      backgroundColor: 'rgba(99,102,241,0.7)', borderColor: '#6366f1', borderWidth: 2, borderRadius: 6 }] },
+    options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
+  });
+  const types = Object.keys(data.by_type);
+  const tcounts = Object.values(data.by_type);
+  new Chart(document.getElementById('typeChart'), {
+    type: 'doughnut',
+    data: { labels: types, datasets: [{ data: tcounts, backgroundColor: ['#6366f1','#f59e0b','#10b981','#ef4444'], borderWidth: 0 }] },
+    options: { responsive: true, plugins: { legend: { position: 'bottom' } } }
+  });
+});
+
+function analyzeUser(uid, name) {
+  document.getElementById('modalUserName').textContent = name;
+  document.getElementById('modalBody').innerHTML = '<div class="loading-state"><div class="spinner"></div><p>Analyzing patterns...</p></div>';
+  document.getElementById('analysisModal').style.display = 'flex';
+  fetch('/api/analyze/' + uid).then(r => r.json()).then(data => {
+    let html = '';
+    if (data.patterns && data.patterns.length > 0) {
+      data.patterns.forEach(p => {
+        html += `<div class="pattern-card severity-${p.severity.toLowerCase()}" style="margin-bottom:1rem;">
+          <div class="pattern-header">
+            <div class="pattern-icon"><i class="fas fa-${p.severity==='High'?'exclamation-circle':p.severity==='Medium'?'exclamation-triangle':'info-circle'}"></i></div>
+            <div><h4>${p.type}</h4><span class="severity-badge severity-${p.severity.toLowerCase()}">${p.severity} Severity</span></div>
+          </div>
+          <p>${p.desc}</p></div>`;
+      });
+    } else {
+      html = '<div class="no-patterns"><i class="fas fa-check-circle fa-2x"></i><h4>No Irregular Patterns</h4><p>Leave history looks healthy.</p></div>';
+    }
+    document.getElementById('modalBody').innerHTML = html;
+  });
+}
+function closeModal() { document.getElementById('analysisModal').style.display = 'none'; }
+document.getElementById('analysisModal').addEventListener('click', function(e) {
+  if(e.target === this) closeModal();
+});
+</script>
+{% endblock %}

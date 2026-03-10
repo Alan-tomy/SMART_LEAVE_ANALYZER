@@ -1,0 +1,52 @@
+{% extends 'base.html' %}
+{% block title %}My Profile{% endblock %}
+{% block content %}
+<div class="page-header"><h1>My Profile</h1></div>
+<div class="profile-grid">
+  <div class="card profile-card">
+    <div class="profile-avatar">{{ user['full_name'][0] }}</div>
+    <h2>{{ user['full_name'] }}</h2>
+    <span class="badge badge-role">{{ user['role_name'] }}</span>
+    <div class="profile-meta">
+      <div><i class="fas fa-id-badge"></i> {{ user['user_code'] }}</div>
+      <div><i class="fas fa-envelope"></i> {{ user['email'] }}</div>
+      <div><i class="fas fa-building"></i> {{ user['department'] }}</div>
+      <div><i class="fas fa-calendar"></i> Joined {{ user['join_date']|fmtdate }}</div>
+    </div>
+  </div>
+  <div>
+    <div class="card">
+      <div class="card-header"><h3>Leave Summary</h3></div>
+      <div class="card-body">
+        <div class="profile-stats">
+          <div class="pstat"><h3>{{ total_leaves }}</h3><p>Total Applications</p></div>
+          <div class="pstat"><h3>{{ approved }}</h3><p>Approved</p></div>
+          <div class="pstat"><h3>{{ pending }}</h3><p>Pending</p></div>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header"><h3><i class="fas fa-wallet"></i> Leave Balance (Current Year)</h3></div>
+      <div class="card-body">
+        <div class="balance-grid">
+          {% for b in balances %}
+          <div class="balance-card">
+            <div class="balance-header">
+              <span class="balance-name">{{ b.leave_name }}</span>
+              <span class="balance-type-badge">{{ 'Paid' if b.is_paid else 'Unpaid' }}</span>
+            </div>
+            <div class="balance-bar-wrap">
+              <div class="balance-bar" style="width:{{ [((b.used / b.allocated) * 100)|int, 100]|min }}%;background:{% if b.remaining <= 2 %}var(--danger){% elif b.remaining <= 5 %}var(--warning){% else %}var(--primary){% endif %}"></div>
+            </div>
+            <div class="balance-numbers">
+              <span><strong>{{ b.used }}</strong> used</span>
+              <span><strong style="color:{% if b.remaining <= 2 %}var(--danger){% elif b.remaining <= 5 %}var(--warning){% else %}var(--success){% endif %}">{{ b.remaining }}</strong> remaining / {{ b.allocated }}</span>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

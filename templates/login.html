@@ -1,0 +1,58 @@
+{% extends 'base.html' %}
+{% block auth_content %}
+<div class="auth-wrapper">
+  <div class="auth-left">
+    <div class="auth-brand">
+      <i class="fas fa-calendar-check fa-3x"></i>
+      <h1>Smart Leave<br>Analyzer</h1>
+      <p>Intelligent leave pattern detection for smarter workforce management.</p>
+    </div>
+    <div class="auth-features">
+      <div class="feature"><i class="fas fa-chart-bar"></i> Pattern Detection</div>
+      <div class="feature"><i class="fas fa-bell"></i> Anomaly Alerts</div>
+      <div class="feature"><i class="fas fa-shield-alt"></i> Role-Based Access</div>
+    </div>
+  </div>
+  <div class="auth-right">
+    <div class="auth-card">
+      <h2>Welcome Back</h2>
+      <p class="auth-sub">Sign in to your account</p>
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}{% for cat, msg in messages %}
+          <div class="alert alert-{{ cat }}"><i class="fas fa-exclamation-circle"></i> {{ msg }}</div>
+        {% endfor %}{% endif %}
+      {% endwith %}
+      <form method="POST">
+        <div class="form-group">
+          <label>Email Address</label>
+          <div class="input-icon">
+            <i class="fas fa-envelope"></i>
+            <input type="email" name="email" required placeholder="your@email.com"/>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Password</label>
+          <div class="input-icon">
+            <i class="fas fa-lock"></i>
+            <input type="password" name="password" required placeholder="••••••••"/>
+          </div>
+        </div>
+        <button type="submit" class="btn btn-primary btn-full">
+          <i class="fas fa-sign-in-alt"></i> Sign In
+        </button>
+        <div class="auth-footer" style="margin-top: 1.5rem; text-align: center;">
+          <a href="{{ url_for('forgot_password') }}" style="color: var(--primary-color); text-decoration: none; font-size: 0.9rem;">
+            <i class="fas fa-key"></i> Forgot your password?
+          </a>
+        </div>
+      </form>
+      <div class="demo-creds">
+        <p><strong>Demo Credentials</strong></p>
+        <div class="cred-row"><span>Admin:</span> admin@smartleave.com / admin123</div>
+        <div class="cred-row"><span>Employee:</span> rahul@smartleave.com / pass123</div>
+        <div class="cred-row"><span>Student:</span> priya@smartleave.com / pass123</div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

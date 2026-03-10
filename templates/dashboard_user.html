@@ -1,0 +1,139 @@
+{% extends 'base.html' %}
+{% block title %}My Dashboard{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>My Dashboard</h1>
+  <p>Hello, <strong>{{ user['full_name'] }}</strong>! <span class="badge badge-role">{{ user['role_name'] }}</span></p>
+</div>
+
+<div class="stats-grid">
+  <div class="stat-card stat-blue">
+    <div class="stat-icon"><i class="fas fa-clock"></i></div>
+    <div class="stat-info"><h3>{{ pending_count }}</h3><p>Pending Leaves</p></div>
+  </div>
+  <div class="stat-card stat-green">
+    <div class="stat-icon"><i class="fas fa-check-circle"></i></div>
+    <div class="stat-info"><h3>{{ approved_count }}</h3><p>Approved Leaves</p></div>
+  </div>
+  {% for b in balances %}
+  <div class="stat-card {% if b.remaining <= 2 %}stat-danger{% elif b.remaining <= 5 %}stat-orange{% else %}stat-purple{% endif %}">
+    <div class="stat-icon"><i class="fas fa-calendar-minus"></i></div>
+    <div class="stat-info"><h3>{{ b.remaining }}</h3><p>{{ b.leave_name }} Left</p></div>
+  </div>
+  {% endfor %}
+</div>
+
+{% if patterns %}
+<div class="alert-patterns">
+  <div class="alert-patterns-header"><i class="fas fa-exclamation-triangle"></i> Pattern Alerts Detected</div>
+  <div class="patterns-inline">
+    {% for p in patterns %}
+    <div class="inline-pattern severity-{{ p.severity.lower() }}">
+      <span class="severity-dot"></span>
+      <strong>{{ p.type }}</strong> — {{ p.desc[:80] }}...
+      <span class="severity-badge severity-{{ p.severity.lower() }}">{{ p.severity }}</span>
+    </div>
+    {% endfor %}
+  </div>
+  <a href="{{ url_for('analysis') }}" class="btn btn-sm btn-outline" style="margin-top:.75rem">View Full Analysis</a>
+</div>
+{% endif %}
+
+<!-- Leave Balance Cards -->
+<div class="card">
+  <div class="card-header"><h3><i class="fas fa-wallet"></i> Leave Balance — {{ "now"|e }}{{ range(2025,2026)|list|last }}</h3>
+    <span style="color:var(--text-muted);font-size:.85rem">Year {{ "now" }}</span>
+  </div>
+  <div class="card-body">
+    <div class="balance-grid">
+      {% for b in balances %}
+      <div class="balance-card">
+        <div class="balance-header">
+          <span class="balance-name">{{ b.leave_name }}</span>
+          <span class="balance-type-badge">{{ 'Paid' if b.is_paid else 'Unpaid' }}</span>
+        </div>
+        <div class="balance-bar-wrap">
+          <div class="balance-bar" style="width:{{ [((b.used / b.allocated) * 100)|int, 100]|min }}%"
+               class="{% if b.remaining <= 2 %}bar-danger{% endif %}"></div>
+        </div>
+        <div class="balance-numbers">
+          <span><strong>{{ b.used }}</strong> used</span>
+          <span><strong style="color:{% if b.remaining <= 2 %}var(--danger){% elif b.remaining <= 5 %}var(--warning){% else %}var(--success){% endif %}">{{ b.remaining }}</strong> remaining / {{ b.allocated }}</span>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+<div class="dashboard-grid">
+  <div class="card chart-card">
+    <div class="card-header"><h3><i class="fas fa-chart-bar"></i> My Monthly Leave Trend</h3></div>
+    <div class="card-body"><canvas id="myMonthlyChart" height="200"></canvas></div>
+  </div>
+  <div class="card">
+    <div class="card-header"><h3><i class="fas fa-bolt"></i> Quick Actions</h3></div>
+    <div class="card-body quick-actions">
+      <a href="{{ url_for('apply_leave') }}" class="quick-action-card">
+        <i class="fas fa-plus-circle"></i><span>Apply Leave</span>
+      </a>
+      <a href="{{ url_for('my_leaves') }}" class="quick-action-card">
+        <i class="fas fa-list"></i><span>View History</span>
+      </a>
+      <a href="{{ url_for('analysis') }}" class="quick-action-card">
+        <i class="fas fa-chart-line"></i><span>My Patterns</span>
+      </a>
+      <a href="{{ url_for('profile') }}" class="quick-action-card">
+        <i class="fas fa-user"></i><span>My Profile</span>
+      </a>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <h3><i class="fas fa-history"></i> Recent Applications</h3>
+    <a href="{{ url_for('my_leaves') }}" class="btn btn-sm btn-outline">View All</a>
+  </div>
+  <div class="card-body">
+    <div class="table-wrapper">
+      <table class="data-table">
+        <thead>
+          <tr><th>Type</th><th>From</th><th>To</th><th>Days</th><th>Applied</th><th>Status</th></tr>
+        </thead>
+        <tbody>
+          {% for app in my_apps %}
+          <tr>
+            <td>{{ app['leave_name'] }}</td>
+            <td>{{ app['start_date']|fmtdate }}</td>
+            <td>{{ app['end_date']|fmtdate }}</td>
+            <td><span class="badge">{{ app['total_days'] }}d</span></td>
+            <td>{{ app['applied_date']|fmtdate }}</td>
+            <td><span class="status-badge status-{{ app['current_status'].lower() }}">{{ app['current_status'] }}</span></td>
+          </tr>
+          {% else %}
+          <tr><td colspan="6" class="empty-state">No leave applications yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+fetch('/api/leave-stats').then(r=>r.json()).then(data=>{
+  const months = Object.keys(data.monthly);
+  const vals = Object.values(data.monthly);
+  if(months.length === 0) return;
+  new Chart(document.getElementById('myMonthlyChart'), {
+    type: 'line',
+    data: { labels: months, datasets: [{ label: 'Leave Days', data: vals,
+      borderColor: '#6366f1', backgroundColor: 'rgba(99,102,241,0.1)',
+      fill: true, tension: 0.4, pointRadius: 5, pointBackgroundColor: '#6366f1' }] },
+    options: { responsive: true, plugins: { legend: { display: false } },
+      scales: { y: { beginAtZero: true } } }
+  });
+});
+</script>
+{% endblock %}

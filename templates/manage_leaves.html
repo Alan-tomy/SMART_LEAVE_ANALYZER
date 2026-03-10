@@ -1,0 +1,363 @@
+{% extends 'base.html' %}
+{% block title %}Manage Leave Requests{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Manage Leave Requests</h1>
+  <p>Click <strong>Analyse & Review</strong> on any pending request to see the full pattern report, then approve or reject from inside the report.</p>
+</div>
+
+<div class="filter-tabs">
+  <a href="?status=all"      class="filter-tab {% if status_filter=='all'      %}active{% endif %}">All</a>
+  <a href="?status=pending"  class="filter-tab {% if status_filter=='pending'  %}active{% endif %}">
+    Pending
+    {% set pcount = applications|selectattr('current_status','equalto','Pending')|list|length %}
+    {% if pcount > 0 %}<span class="tab-count">{{ pcount }}</span>{% endif %}
+  </a>
+  <a href="?status=approved" class="filter-tab {% if status_filter=='approved' %}active{% endif %}">Approved</a>
+  <a href="?status=rejected" class="filter-tab {% if status_filter=='rejected' %}active{% endif %}">Rejected</a>
+</div>
+
+<div class="card">
+  <div class="card-body">
+    <div class="table-wrapper">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Applicant</th><th>Role</th><th>Leave Type</th>
+            <th>From</th><th>To</th><th>Days</th>
+            <th>Reason</th><th>Applied On</th><th>Status</th><th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for app in applications %}
+          <tr>
+            <td>
+              <strong>{{ app['full_name'] }}</strong><br>
+              <small class="text-muted">{{ app['department'] or '—' }}</small>
+            </td>
+            <td><span class="badge {% if app['role_name']=='Employee' %}badge-employee{% else %}badge-student{% endif %}">
+              {{ app['role_name'] }}</span>
+            </td>
+            <td>{{ app['leave_name'] }}</td>
+            <td>{{ app['start_date']|fmtdate }}</td>
+            <td>{{ app['end_date']|fmtdate }}</td>
+            <td><span class="badge">{{ app['total_days'] }}d</span></td>
+            <td class="reason-cell" title="{{ app['reason'] }}">{{ app['reason'] }}</td>
+            <td>{{ app['applied_date']|fmtdate }}</td>
+            <td><span class="status-badge status-{{ app['current_status'].lower() }}">{{ app['current_status'] }}</span></td>
+            <td>
+              {% if app['current_status'] == 'Pending' %}
+              <button class="btn btn-sm btn-primary" onclick="openReview({{ app['leave_id'] }}, '{{ app['full_name'] }}')">
+                <i class="fas fa-search"></i> Analyse & Review
+              </button>
+              {% else %}
+              <button class="btn btn-sm btn-outline" onclick="openReview({{ app['leave_id'] }}, '{{ app['full_name'] }}')">
+                <i class="fas fa-eye"></i> View Report
+              </button>
+              {% endif %}
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="10" class="empty-state"><i class="fas fa-inbox"></i><br>No applications found.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ===== REVIEW PANEL MODAL ===== -->
+<div class="modal-overlay" id="reviewModal" style="display:none;">
+  <div class="modal review-modal">
+
+    <div class="modal-header" style="flex-shrink:0;">
+      <div>
+        <h3><i class="fas fa-chart-line"></i> Leave Review — <span id="reviewName"></span></h3>
+        <p style="color:var(--text-muted);font-size:.8rem;margin-top:.2rem;">
+          Read the full pattern report below, then scroll down to Approve or Reject.
+        </p>
+      </div>
+      <button class="modal-close" onclick="closeReview()">×</button>
+    </div>
+
+    <!-- ALL content in one scrollable body -->
+    <div class="modal-body review-body">
+
+      <!-- Loading -->
+      <div id="reviewLoading" style="text-align:center;padding:3rem;">
+        <div class="spinner" style="margin:0 auto 1rem;"></div>
+        <p style="color:var(--text-muted);">Analysing leave patterns...</p>
+      </div>
+
+      <!-- Report -->
+      <div id="reviewContent" style="display:none;">
+
+        <!-- 1. Application Details -->
+        <div class="review-section">
+          <div class="review-section-title"><i class="fas fa-file-alt"></i> Leave Application Details</div>
+          <div class="review-details-grid" id="appDetails"></div>
+        </div>
+
+        <!-- 2. History Stats -->
+        <div class="review-section">
+          <div class="review-section-title"><i class="fas fa-history"></i> Applicant Leave History</div>
+          <div class="review-stats-row" id="statsRow"></div>
+        </div>
+
+        <!-- 3. Pattern Analysis -->
+        <div class="review-section">
+          <div class="review-section-title"><i class="fas fa-search"></i> Pattern Analysis Results</div>
+          <div id="patternsList"></div>
+        </div>
+
+        <!-- 4. System Verdict -->
+        <div class="review-section">
+          <div class="review-section-title"><i class="fas fa-gavel"></i> System Recommendation</div>
+          <div id="verdictBox"></div>
+        </div>
+
+        <!-- 5. Admin Decision (only for Pending) -->
+        <div class="review-section" id="secDecision" style="display:none;">
+          <div class="review-section-title"><i class="fas fa-check-double"></i> Your Decision</div>
+
+          <div class="decision-hint">
+            <i class="fas fa-info-circle"></i>
+            Review the pattern report above, then choose to <strong>Approve</strong> or <strong>Reject</strong> this leave request.
+          </div>
+
+          <form method="POST" id="decisionForm">
+            <input type="hidden" name="action" id="decisionAction"/>
+
+            <div class="decision-btns">
+              <button type="button" class="btn btn-success btn-decision" onclick="setDecision('approve')">
+                <i class="fas fa-check-circle"></i> Approve Leave
+              </button>
+              <button type="button" class="btn btn-danger btn-decision" onclick="setDecision('reject')">
+                <i class="fas fa-times-circle"></i> Reject Leave
+              </button>
+            </div>
+
+            <!-- Confirmation bar — shown after clicking Approve or Reject -->
+            <div id="confirmBar" style="display:none;">
+              <div id="confirmBanner" style="border-radius:10px;padding:1.25rem;margin-top:1rem;">
+                <div style="font-weight:700;font-size:1rem;margin-bottom:.75rem;" id="confirmMsg"></div>
+                <div class="form-group">
+                  <label style="font-size:.85rem;font-weight:600;">
+                    Remarks <span id="remarksRequired" style="color:var(--danger)"></span>
+                  </label>
+                  <textarea name="remarks" id="remarksInput" class="form-control" rows="3"
+                    placeholder="Explain your decision (required for rejection)..."></textarea>
+                </div>
+                <div style="display:flex;gap:.75rem;margin-top:.875rem;">
+                  <button type="submit" class="btn" id="confirmSubmit" style="flex:1;justify-content:center;">
+                    <i class="fas fa-check"></i> Confirm & Submit
+                  </button>
+                  <button type="button" class="btn btn-outline" onclick="cancelConfirm()" style="flex:1;justify-content:center;">
+                    <i class="fas fa-arrow-left"></i> Go Back
+                  </button>
+                </div>
+              </div>
+            </div>
+
+          </form>
+        </div>
+
+        <!-- Already decided message -->
+        <div class="review-section" id="secAlreadyDecided" style="display:none;">
+          <div class="review-section-title"><i class="fas fa-lock"></i> Decision</div>
+          <div id="decidedBox"></div>
+        </div>
+
+      </div><!-- /reviewContent -->
+    </div><!-- /modal-body -->
+
+    <div class="modal-footer" style="flex-shrink:0;justify-content:space-between;">
+      <button class="btn btn-outline" onclick="closeReview()">
+        <i class="fas fa-arrow-left"></i> Close
+      </button>
+      <span id="footerStatus" style="font-size:.85rem;color:var(--text-muted);align-self:center;"></span>
+    </div>
+
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let currentLeaveId = null;
+
+function openReview(leaveId, name) {
+  currentLeaveId = leaveId;
+  document.getElementById('reviewName').textContent = name;
+  document.getElementById('reviewLoading').style.display = 'block';
+  document.getElementById('reviewContent').style.display = 'none';
+  document.getElementById('reviewModal').style.display = 'flex';
+  // Reset confirm bar
+  document.getElementById('confirmBar').style.display = 'none';
+  document.getElementById('decisionAction').value = '';
+
+  fetch('/api/leave-review/' + leaveId)
+    .then(r => r.json())
+    .then(data => renderReport(data))
+    .catch(() => {
+      document.getElementById('reviewLoading').innerHTML =
+        '<p style="color:var(--danger);padding:2rem;"><i class="fas fa-exclamation-circle"></i> Failed to load report. Please try again.</p>';
+    });
+}
+
+function renderReport(data) {
+  document.getElementById('reviewLoading').style.display = 'none';
+  document.getElementById('reviewContent').style.display = 'block';
+
+  const leave = data.leave;
+  const isPending = leave.current_status === 'Pending';
+
+  // ---- 1. Application Details ----
+  const fmt = ds => new Date(ds).toLocaleDateString('en-IN', {weekday:'long', day:'numeric', month:'short', year:'numeric'});
+  document.getElementById('appDetails').innerHTML = `
+    <div class="rdetail"><span>Leave Type</span><strong>${leave.leave_name}</strong></div>
+    <div class="rdetail"><span>From</span><strong>${fmt(leave.start_date)}</strong></div>
+    <div class="rdetail"><span>To</span><strong>${fmt(leave.end_date)}</strong></div>
+    <div class="rdetail"><span>Total Days</span><strong>${leave.total_days} working day(s)</strong></div>
+    <div class="rdetail" style="grid-column:span 2"><span>Reason</span><strong>${leave.reason || '—'}</strong></div>
+  `;
+
+  // ---- 2. Stats ----
+  const b = data.balance;
+  const pct = Math.min(Math.round((b.used / b.allocated) * 100), 100);
+  const balColor = b.remaining <= 0 ? 'var(--danger)' : b.remaining <= 2 ? 'var(--warning)' : 'var(--success)';
+  document.getElementById('statsRow').innerHTML = `
+    <div class="rstat"><div class="rstat-num">${data.stats.total_apps}</div><div class="rstat-label">Total Applications</div></div>
+    <div class="rstat"><div class="rstat-num" style="color:var(--success)">${data.stats.approved}</div><div class="rstat-label">Approved</div></div>
+    <div class="rstat"><div class="rstat-num" style="color:var(--primary)">${data.stats.approval_rate}%</div><div class="rstat-label">Approval Rate</div></div>
+    <div class="rstat" style="flex:2;text-align:left;">
+      <div class="rstat-label">${leave.leave_name} Balance This Year</div>
+      <div style="background:var(--border);border-radius:99px;height:10px;overflow:hidden;margin:.5rem 0;">
+        <div style="width:${pct}%;height:100%;background:${balColor};border-radius:99px;"></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:.75rem;">
+        <span>${b.used} used</span>
+        <span style="color:${balColor};font-weight:700;">${b.remaining} left / ${b.allocated}</span>
+      </div>
+    </div>
+  `;
+
+  // ---- 3. Patterns ----
+  const pl = document.getElementById('patternsList');
+  if (!data.patterns || data.patterns.length === 0) {
+    pl.innerHTML = `
+      <div style="text-align:center;padding:1.5rem;color:var(--success);">
+        <i class="fas fa-check-circle" style="font-size:2rem;margin-bottom:.5rem;display:block;"></i>
+        <h4 style="color:var(--text);">No Irregular Patterns Detected</h4>
+        <p style="color:var(--text-muted);">This applicant has a clean leave history.</p>
+      </div>`;
+  } else {
+    const icons = {High:'exclamation-circle', Medium:'exclamation-triangle', Low:'info-circle'};
+    pl.innerHTML = data.patterns.map(p => {
+      const eligible = p.eligible !== false;
+      return `
+      <div class="pattern-review-card severity-${p.severity.toLowerCase()}">
+        <div class="prc-header">
+          <div class="prc-icon"><i class="fas fa-${icons[p.severity]||'info-circle'}"></i></div>
+          <div class="prc-meta">
+            <span class="prc-title">${p.type}</span>
+            <span class="severity-badge severity-${p.severity.toLowerCase()}">${p.severity}</span>
+            <span class="elig-badge ${eligible?'elig-yes':'elig-no'}">
+              <i class="fas fa-${eligible?'check':'ban'}"></i> ${eligible?'Eligible':'Not Eligible'}
+            </span>
+          </div>
+        </div>
+        <div class="prc-body">
+          <div class="prc-row"><span class="prc-label"><i class="fas fa-chart-bar"></i> Finding</span><span>${p.desc}</span></div>
+          <div class="prc-row"><span class="prc-label"><i class="fas fa-exclamation-triangle"></i> Impact</span><span>${p.impact}</span></div>
+          <div class="prc-row prc-rec"><span class="prc-label"><i class="fas fa-lightbulb"></i> Advice</span><span>${p.recommendation}</span></div>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  // ---- 4. Verdict ----
+  const vc = {
+    'RECOMMENDED':     {bg:'#f0fdf4', border:'#86efac', color:'#166534', icon:'check-circle',        label:'✅'},
+    'CONDITIONAL':     {bg:'#eff6ff', border:'#93c5fd', color:'#1e40af', icon:'info-circle',          label:'🔵'},
+    'REVIEW_REQUIRED': {bg:'#fffbeb', border:'#fbbf24', color:'#92400e', icon:'exclamation-triangle', label:'⚠️'},
+    'NOT_RECOMMENDED': {bg:'#fff1f2', border:'#fca5a5', color:'#991b1b', icon:'times-circle',         label:'❌'},
+  };
+  const v = vc[data.verdict] || vc['CONDITIONAL'];
+  document.getElementById('verdictBox').innerHTML = `
+    <div style="background:${v.bg};border:2px solid ${v.border};border-radius:12px;padding:1.25rem 1.5rem;">
+      <div style="display:flex;align-items:flex-start;gap:1rem;">
+        <i class="fas fa-${v.icon}" style="font-size:2rem;color:${v.color};flex-shrink:0;margin-top:.1rem;"></i>
+        <div>
+          <div style="font-size:1.05rem;font-weight:700;color:${v.color};">${data.verdict_label}</div>
+          <div style="font-size:.875rem;color:${v.color};opacity:.9;margin-top:.35rem;line-height:1.5;">${data.verdict_reason}</div>
+        </div>
+      </div>
+    </div>`;
+
+  // ---- 5. Decision or Already-Decided ----
+  if (isPending) {
+    document.getElementById('secDecision').style.display = 'block';
+    document.getElementById('secAlreadyDecided').style.display = 'none';
+    document.getElementById('decisionForm').action = '/update-leave/' + currentLeaveId;
+    document.getElementById('footerStatus').textContent = '⏳ Awaiting your decision';
+  } else {
+    document.getElementById('secDecision').style.display = 'none';
+    document.getElementById('secAlreadyDecided').style.display = 'block';
+    const sc = leave.current_status === 'Approved' ? {bg:'#f0fdf4',border:'#86efac',color:'#166534',icon:'check-circle'} : {bg:'#fff1f2',border:'#fca5a5',color:'#991b1b',icon:'times-circle'};
+    document.getElementById('decidedBox').innerHTML = `
+      <div style="background:${sc.bg};border:1.5px solid ${sc.border};border-radius:10px;padding:1rem 1.25rem;color:${sc.color};">
+        <i class="fas fa-${sc.icon}"></i> This leave was already <strong>${leave.current_status}</strong>.
+        No further action needed.
+      </div>`;
+    document.getElementById('footerStatus').textContent = `Decision: ${leave.current_status}`;
+  }
+}
+
+function setDecision(action) {
+  const isApprove = action === 'approve';
+  document.getElementById('decisionAction').value = action;
+  const bar = document.getElementById('confirmBar');
+  const banner = document.getElementById('confirmBanner');
+  bar.style.display = 'block';
+  banner.style.background = isApprove ? '#f0fdf4' : '#fff1f2';
+  banner.style.border    = `1.5px solid ${isApprove ? '#86efac' : '#fca5a5'}`;
+  document.getElementById('confirmMsg').textContent =
+    isApprove
+      ? '✅ You are about to APPROVE this leave request.'
+      : '❌ You are about to REJECT this leave request.';
+  document.getElementById('remarksRequired').textContent = isApprove ? '(optional)' : '(required)';
+  const btn = document.getElementById('confirmSubmit');
+  btn.className = `btn ${isApprove ? 'btn-success' : 'btn-danger'}`;
+  btn.style.flex = '1';
+  btn.style.justifyContent = 'center';
+  // Scroll confirm into view
+  bar.scrollIntoView({behavior:'smooth', block:'nearest'});
+}
+
+function cancelConfirm() {
+  document.getElementById('confirmBar').style.display = 'none';
+  document.getElementById('decisionAction').value = '';
+}
+
+function closeReview() {
+  document.getElementById('reviewModal').style.display = 'none';
+}
+
+document.getElementById('reviewModal').addEventListener('click', function(e) {
+  if (e.target === this) closeReview();
+});
+
+// Validate remarks on rejection before submit
+document.getElementById('decisionForm').addEventListener('submit', function(e) {
+  const action = document.getElementById('decisionAction').value;
+  const remarks = document.getElementById('remarksInput').value.trim();
+  if (action === 'reject' && !remarks) {
+    e.preventDefault();
+    document.getElementById('remarksInput').style.border = '2px solid var(--danger)';
+    document.getElementById('remarksInput').placeholder = 'Remarks are required for rejection!';
+    document.getElementById('remarksInput').focus();
+  }
+});
+</script>
+{% endblock %}

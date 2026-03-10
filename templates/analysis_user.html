@@ -1,0 +1,107 @@
+{% extends 'base.html' %}
+{% block title %}My Pattern Analysis{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>My Leave Pattern Analysis</h1>
+  <p>Rule-based insights from your leave history</p>
+</div>
+
+<!-- Balance summary -->
+<div class="balance-grid" style="margin-bottom:1.5rem;">
+  {% for b in balances %}
+  <div class="balance-card">
+    <div class="balance-header">
+      <span class="balance-name">{{ b.leave_name }}</span>
+      <span class="balance-type-badge">{{ 'Paid' if b.is_paid else 'Unpaid' }}</span>
+    </div>
+    <div class="balance-bar-wrap">
+      <div class="balance-bar" style="width:{{ [((b.used / b.allocated) * 100)|int, 100]|min }}%;background:{% if b.remaining <= 2 %}var(--danger){% elif b.remaining <= 5 %}var(--warning){% else %}var(--primary){% endif %}"></div>
+    </div>
+    <div class="balance-numbers">
+      <span><strong>{{ b.used }}</strong> used</span>
+      <span><strong style="color:{% if b.remaining <= 2 %}var(--danger){% elif b.remaining <= 5 %}var(--warning){% else %}var(--success){% endif %}">{{ b.remaining }}</strong> left / {{ b.allocated }}</span>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+{% if patterns %}
+<div class="analysis-summary">
+  <div class="summary-header">
+    <i class="fas fa-exclamation-triangle"></i>
+    <span>{{ patterns|length }} pattern(s) detected in your leave history</span>
+  </div>
+</div>
+<div class="patterns-grid">
+  {% for p in patterns %}
+  <div class="pattern-card severity-{{ p.severity.lower() }}">
+    <div class="pattern-header">
+      <div class="pattern-icon">
+        {% if p.severity == 'High' %}<i class="fas fa-exclamation-circle"></i>
+        {% elif p.severity == 'Medium' %}<i class="fas fa-exclamation-triangle"></i>
+        {% else %}<i class="fas fa-info-circle"></i>{% endif %}
+      </div>
+      <div>
+        <h4>{{ p.type }}</h4>
+        <span class="severity-badge severity-{{ p.severity.lower() }}">{{ p.severity }} Severity</span>
+      </div>
+    </div>
+    <p>{{ p.desc }}</p>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="no-patterns">
+  <i class="fas fa-check-circle fa-3x"></i>
+  <h3>No Irregular Patterns Detected</h3>
+  <p>Your leave history looks healthy! Keep maintaining good attendance.</p>
+</div>
+{% endif %}
+
+<div class="card" style="margin-top: 2rem;">
+  <div class="card-header"><h3><i class="fas fa-chart-bar"></i> Leave History Chart</h3></div>
+  <div class="card-body"><canvas id="userAnalysisChart" height="120"></canvas></div>
+</div>
+
+<div class="card">
+  <div class="card-header"><h3><i class="fas fa-list"></i> Approved Leave Records</h3></div>
+  <div class="card-body">
+    <div class="table-wrapper">
+      <table class="data-table">
+        <thead><tr><th>Type</th><th>From</th><th>To</th><th>Days</th><th>Day of Week</th></tr></thead>
+        <tbody>
+          {% for a in applications %}
+          <tr>
+            <td>{{ a['leave_name'] }}</td>
+            <td>{{ a['start_date']|fmtdate }}</td>
+            <td>{{ a['end_date']|fmtdate }}</td>
+            <td>{{ a['total_days'] }}</td>
+            <td><span class="badge">{{ a['start_date']|fmtdate('%A') }}</span></td>
+          </tr>
+          {% else %}
+          <tr><td colspan="5" class="empty-state">No approved leaves found.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+const apps = [{% for a in applications %}{ month: "{{ a['start_date']|fmtdate('%b %Y') }}", days: {{ a['total_days'] }} },{% endfor %}];
+const monthly = {};
+apps.forEach(a => { monthly[a.month] = (monthly[a.month] || 0) + a.days; });
+if (Object.keys(monthly).length > 0) {
+  new Chart(document.getElementById('userAnalysisChart'), {
+    type: 'bar',
+    data: {
+      labels: Object.keys(monthly),
+      datasets: [{ label: 'Leave Days', data: Object.values(monthly),
+        backgroundColor: 'rgba(99,102,241,0.7)', borderColor: '#6366f1', borderWidth: 2, borderRadius: 6 }]
+    },
+    options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
+  });
+}
+</script>
+{% endblock %}

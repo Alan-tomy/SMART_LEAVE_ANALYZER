@@ -1,0 +1,104 @@
+{% extends 'base.html' %}
+{% block title %}Pattern Analysis — Admin{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Leave Pattern Analyzer</h1>
+  <p>Select a user to analyze their leave patterns</p>
+</div>
+
+<div class="analysis-tool">
+  <div class="card">
+    <div class="card-header"><h3><i class="fas fa-search"></i> Analyze User</h3></div>
+    <div class="card-body">
+      <div class="form-row">
+        <div class="form-group" style="flex:1">
+          <label>Select User</label>
+          <select id="userSelect" class="form-control">
+            <option value="">-- Choose a user --</option>
+            {% for u in users %}
+            {% if u['role_name'] != 'Admin' %}
+            <option value="{{ u['user_id'] }}">{{ u['full_name'] }} ({{ u['user_code'] }}) — {{ u['department'] }}</option>
+            {% endif %}
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group" style="align-self:flex-end">
+          <button onclick="runAnalysis()" class="btn btn-primary">
+            <i class="fas fa-play"></i> Run Analysis
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="analysisResults" style="display:none;">
+  <div class="card">
+    <div class="card-header">
+      <h3><i class="fas fa-user"></i> Results for: <span id="userName"></span></h3>
+    </div>
+    <div class="card-body">
+      <div id="patternsList"></div>
+    </div>
+  </div>
+  <div class="card" style="margin-top:1.5rem;">
+    <div class="card-header"><h3><i class="fas fa-chart-bar"></i> Leave Distribution</h3></div>
+    <div class="card-body">
+      <canvas id="adminAnalysisChart" height="120"></canvas>
+    </div>
+  </div>
+</div>
+<div id="loadingState" style="display:none;" class="loading-state">
+  <div class="spinner"></div><p>Analyzing patterns...</p>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+let chartInstance = null;
+function runAnalysis() {
+  const uid = document.getElementById('userSelect').value;
+  if (!uid) { alert('Please select a user.'); return; }
+  document.getElementById('loadingState').style.display = 'flex';
+  document.getElementById('analysisResults').style.display = 'none';
+  fetch('/api/analyze/' + uid).then(r=>r.json()).then(data=>{
+    document.getElementById('loadingState').style.display = 'none';
+    document.getElementById('analysisResults').style.display = 'block';
+    document.getElementById('userName').textContent = data.user;
+    const pl = document.getElementById('patternsList');
+    if (data.patterns.length === 0) {
+      pl.innerHTML = '<div class="no-patterns"><i class="fas fa-check-circle fa-2x"></i><h4>No irregular patterns detected</h4><p>This user\'s leave history appears normal.</p></div>';
+    } else {
+      pl.innerHTML = '<div class="patterns-grid">' + data.patterns.map(p => `
+        <div class="pattern-card severity-${p.severity.toLowerCase()}">
+          <div class="pattern-header">
+            <div class="pattern-icon">
+              ${p.severity === 'High' ? '<i class="fas fa-exclamation-circle"></i>' :
+                p.severity === 'Medium' ? '<i class="fas fa-exclamation-triangle"></i>' : '<i class="fas fa-info-circle"></i>'}
+            </div>
+            <div>
+              <h4>${p.type}</h4>
+              <span class="severity-badge severity-${p.severity.toLowerCase()}">${p.severity} Severity</span>
+            </div>
+          </div>
+          <p>${p.desc}</p>
+        </div>`).join('') + '</div>';
+    }
+    // Chart
+    const monthly = {};
+    data.leave_data.forEach(l => { monthly[l.month] = (monthly[l.month] || 0) + l.days; });
+    const ctx = document.getElementById('adminAnalysisChart');
+    if (chartInstance) chartInstance.destroy();
+    chartInstance = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: Object.keys(monthly),
+        datasets: [{ label: 'Leave Days', data: Object.values(monthly),
+          backgroundColor: 'rgba(99,102,241,0.7)', borderColor: '#6366f1', borderWidth: 2, borderRadius: 6 }]
+      },
+      options: { responsive: true, plugins: { legend: { display: false } },
+        scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
+    });
+  });
+}
+</script>
+{% endblock %}

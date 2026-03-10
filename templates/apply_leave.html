@@ -1,0 +1,122 @@
+{% extends 'base.html' %}
+{% block title %}Apply Leave{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Apply for Leave</h1>
+  <p>Submit a new leave request — remaining balance shown per type</p>
+</div>
+
+<!-- Balance Overview -->
+<div class="balance-mini-bar" style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:1.5rem;">
+  {% for b in balance_map.values() %}
+  <div class="balance-mini {% if b.remaining == 0 %}balance-empty{% elif b.remaining <= 3 %}balance-low{% endif %}">
+    <span class="bm-name">{{ b.leave_name }}</span>
+    <span class="bm-count">{{ b.remaining }}/{{ b.allocated }}</span>
+    <span class="bm-label">remaining</span>
+  </div>
+  {% endfor %}
+</div>
+
+<div class="form-card">
+  <form method="POST" id="leaveForm">
+    <div class="form-row">
+      <div class="form-group">
+        <label><i class="fas fa-tag"></i> Leave Type</label>
+        <select name="leave_type_id" required class="form-control" id="leaveTypeSelect" onchange="updateBalanceInfo()">
+          <option value="">-- Select Type --</option>
+          {% for lt in leave_types %}
+          <option value="{{ lt.leave_type_id }}"
+            data-remaining="{{ balance_map[lt.leave_type_id].remaining if lt.leave_type_id in balance_map else lt.max_days_year }}"
+            data-allocated="{{ lt.max_days_year }}"
+            {% if lt.leave_type_id in balance_map and balance_map[lt.leave_type_id].remaining == 0 %}disabled{% endif %}>
+            {{ lt.leave_name }} — {{ balance_map[lt.leave_type_id].remaining if lt.leave_type_id in balance_map else lt.max_days_year }} days left ({{ 'Paid' if lt.is_paid else 'Unpaid' }})
+          </option>
+          {% endfor %}
+        </select>
+        <div id="balanceInfo" style="display:none;margin-top:.5rem;"></div>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label><i class="fas fa-calendar"></i> Start Date</label>
+        <input type="date" name="start_date" id="start_date" required class="form-control" min="{{ today }}"/>
+      </div>
+      <div class="form-group">
+        <label><i class="fas fa-calendar-check"></i> End Date</label>
+        <input type="date" name="end_date" id="end_date" required class="form-control" min="{{ today }}"/>
+      </div>
+    </div>
+    <div class="form-group" id="daysPreview" style="display:none;">
+      <div class="days-preview-box" id="daysPreviewBox">
+        <i class="fas fa-info-circle"></i>
+        Estimated working days: <strong id="estDays">-</strong>
+      </div>
+    </div>
+    <div class="form-group">
+      <label><i class="fas fa-comment-alt"></i> Reason</label>
+      <textarea name="reason" rows="4" class="form-control" placeholder="Briefly describe the reason for your leave..." required></textarea>
+    </div>
+    <div class="form-actions">
+      <a href="{{ url_for('dashboard') }}" class="btn btn-outline">Cancel</a>
+      <button type="submit" class="btn btn-primary">
+        <i class="fas fa-paper-plane"></i> Submit Application
+      </button>
+    </div>
+  </form>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+const today = new Date().toISOString().split('T')[0];
+document.getElementById('start_date').value = today;
+document.getElementById('end_date').value = today;
+
+function updateBalanceInfo() {
+  const sel = document.getElementById('leaveTypeSelect');
+  const opt = sel.options[sel.selectedIndex];
+  const info = document.getElementById('balanceInfo');
+  if (!opt.value) { info.style.display='none'; return; }
+  const rem = parseInt(opt.dataset.remaining);
+  const alloc = parseInt(opt.dataset.allocated);
+  const color = rem === 0 ? 'var(--danger)' : rem <= 3 ? 'var(--warning)' : 'var(--success)';
+  info.style.display = 'block';
+  info.innerHTML = `<div style="background:#f8fafc;border-radius:8px;padding:.75rem 1rem;border-left:3px solid ${color};font-size:.875rem;">
+    <strong>Balance:</strong> <span style="color:${color}">${rem} days remaining</span> out of ${alloc} allocated this year.
+    ${rem === 0 ? '<br><span style="color:var(--danger)">⚠️ No balance left for this leave type.</span>' : ''}
+  </div>`;
+  updateDays();
+}
+
+function updateDays() {
+  const s = document.getElementById('start_date').value;
+  const e = document.getElementById('end_date').value;
+  const sel = document.getElementById('leaveTypeSelect');
+  const opt = sel.options[sel.selectedIndex];
+  if (s && e && e >= s) {
+    let count = 0, cur = new Date(s);
+    const end = new Date(e);
+    while (cur <= end) {
+      const d = cur.getDay();
+      if (d !== 0 && d !== 6) count++;
+      cur.setDate(cur.getDate() + 1);
+    }
+    document.getElementById('estDays').textContent = count;
+    const box = document.getElementById('daysPreviewBox');
+    if (opt.value) {
+      const rem = parseInt(opt.dataset.remaining);
+      if (count > rem) {
+        box.style.background = '#fee2e2'; box.style.color = '#991b1b';
+        box.innerHTML = `<i class="fas fa-exclamation-circle"></i> Estimated <strong>${count}</strong> days — exceeds your balance of <strong>${rem}</strong> days!`;
+      } else {
+        box.style.background = ''; box.style.color = '';
+        box.innerHTML = `<i class="fas fa-info-circle"></i> Estimated working days: <strong>${count}</strong>`;
+      }
+    }
+    document.getElementById('daysPreview').style.display = 'block';
+  }
+}
+document.getElementById('start_date').addEventListener('change', updateDays);
+document.getElementById('end_date').addEventListener('change', updateDays);
+updateDays();
+</script>
+{% endblock %}
